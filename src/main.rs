@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
         let card_type = item.get("cardType").unwrap().as_str().unwrap();
         let process_num = item.get("processNum").unwrap().as_str().unwrap();
         let level_cd = item.get("levelCd").unwrap().as_str().unwrap();
-        let key_code = item.get("keyCode").unwrap().as_str().unwrap().replace("_", " ");
+        let key_code = item.get("keyCode").unwrap().as_str().unwrap().replace('_', " ");
         let use_date = item.get("useDate").unwrap().as_str().unwrap();
         let corp_code = item.get("corpCode").unwrap().as_str().unwrap();
         let price_comma = price.to_formatted_string(&Locale::en);
