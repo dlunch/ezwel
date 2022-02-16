@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use chrono::{Datelike, Local, TimeZone};
 use num_format::{Locale, ToFormattedString};
 use regex::Regex;
 
@@ -33,6 +34,13 @@ async fn main() -> Result<()> {
     let user_key = re.captures(&response_content).unwrap().get(1).unwrap().as_str();
 
     // get usage list
+    let today = Local::today();
+    let today_str1 = today.format("%Y-%m-%d").to_string();
+    let today_str = today.format("%Y%m%d").to_string();
+
+    let first_date = Local.ymd(today.year(), 1, 1);
+    let first_date_str1 = first_date.format("%Y-%m-%d").to_string();
+    let first_date_str = first_date.format("%Y%m%d").to_string();
 
     let response = client
         .post(format!(
@@ -45,10 +53,10 @@ async fn main() -> Result<()> {
             ("userKey", user_key),
             ("specialPointUseYn", "N"),
             ("jsonYn", "Y"),
-            ("startDt1", "2022-01-01"),
-            ("endDt1", "2022-01-16"),
-            ("startDt", "20220101"),
-            ("endDt", "20220116"),
+            ("startDt1", &first_date_str1),
+            ("endDt1", &today_str1),
+            ("startDt", &first_date_str),
+            ("endDt", &today_str),
         ])
         .send()
         .await?;
@@ -62,7 +70,26 @@ async fn main() -> Result<()> {
         return Err(anyhow!("Failed to get result"));
     }
 
-    for item in response_array.iter().skip(1) {
+    if response_array.len() == 1 {
+        return Ok(());
+    }
+
+    let card_type = response_array[1].get("cardType").unwrap().as_str().unwrap();
+
+    let mut form_data = vec![
+        ("channelType".into(), "1001".into()),
+        ("clientCd".into(), company.to_owned()),
+        ("userKey".into(), user_key.to_owned()),
+        ("cardType".into(), card_type.to_owned()),
+        ("isOffCardClosed".into(), "false".into()),
+        ("usableExPoint0".into(), "0".into()),
+        ("usableExPoint1".into(), "0".into()),
+        ("usableExPoint2".into(), "0".into()),
+        ("usableExPoint3".into(), "0".into()),
+        ("usableExPoint4".into(), "0".into()),
+    ];
+
+    for (i, item) in response_array.iter().skip(1).enumerate() {
         let date = item.get("useDate").unwrap().as_str().unwrap();
         let price = item.get("usePrice").unwrap().as_u64().unwrap();
         let kind = item.get("storeKname").unwrap().as_str().unwrap();
@@ -80,46 +107,34 @@ async fn main() -> Result<()> {
         let corp_code = item.get("corpCode").unwrap().as_str().unwrap();
         let price_comma = price.to_formatted_string(&Locale::en);
 
-        let response = client
-            .post(format!(
-                "https://{}.ezwel.com/cuser/mypage/offlinecard/ajax/offCardUseInsertAjax.ez",
-                company
-            ))
-            .form(&[
-                ("channelType", "1001"),
-                ("clientCd", company),
-                ("userKey", user_key),
-                ("cardType", card_type),
-                ("isOffCardClosed", "false"),
-                ("usableExPoint0", "0"),
-                ("usableExPoint1", "0"),
-                ("usableExPoint2", "0"),
-                ("usableExPoint3", "0"),
-                ("usableExPoint4", "0"),
-                ("checkIdx", "0"),
-                ("keyCode0", &key_code),
-                ("processNum0", process_num),
-                ("useDate0", use_date),
-                ("usePrice0", &price.to_string()),
-                ("cardType0", card_type),
-                ("quota0", "00"),
-                ("storeCode0", store_code),
-                ("storeName0", store),
-                ("storeKind0", store_kind),
-                ("storeKname0", kind),
-                ("levelCd0", level_cd),
-                ("corpCode0", corp_code),
-                ("bpreqPrice0", &price.to_string()),
-                ("spreqPrice0", "0"),
-                ("requestPrice0", &price_comma),
-                ("reqExPrice0", "0"),
-                ("usableExPoint0", "0"),
-            ])
-            .send()
-            .await?;
-
-        println!("{}", response.text().await?);
+        form_data.push(("checkIdx".into(), i.to_string()));
+        form_data.push((format!("keyCode{}", i), key_code));
+        form_data.push((format!("processNum{}", i), process_num.to_owned()));
+        form_data.push((format!("useDate{}", i), use_date.to_owned()));
+        form_data.push((format!("usePrice{}", i), price.to_string()));
+        form_data.push((format!("cardType{}", i), card_type.to_owned()));
+        form_data.push((format!("quota{}", i), "00".into()));
+        form_data.push((format!("storeCode{}", i), store_code.to_owned()));
+        form_data.push((format!("storeName{}", i), store.to_owned()));
+        form_data.push((format!("storeKind{}", i), store_kind.to_owned()));
+        form_data.push((format!("storeKname{}", i), kind.to_owned()));
+        form_data.push((format!("levelCd{}", i), level_cd.to_owned()));
+        form_data.push((format!("corpCode{}", i), corp_code.to_owned()));
+        form_data.push((format!("bpreqPrice{}", i), price.to_string()));
+        form_data.push((format!("spreqPrice{}", i), "0".into()));
+        form_data.push((format!("requestPrice{}", i), price_comma));
+        form_data.push((format!("reqExPrice{}", i), "0".into()));
+        form_data.push((format!("usableExPoint{}", i), "0".into()));
     }
+    let response = client
+        .post(format!(
+            "https://{}.ezwel.com/cuser/mypage/offlinecard/ajax/offCardUseInsertAjax.ez",
+            company
+        ))
+        .form(&form_data)
+        .send()
+        .await?;
+    println!("{}", response.text().await?);
 
     Ok(())
 }
